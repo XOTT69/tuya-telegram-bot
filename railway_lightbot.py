@@ -1,15 +1,15 @@
 from flask import Flask, request
 from datetime import datetime
 import os
-from telegram import Bot
-from telegram.error import TelegramError
+import telebot
+from telebot.apihelper import ApiException
 
 app = Flask(__name__)
 
 # Конфіги
-BOT_TOKEN = os.getenv('BOT_TOKEN', '')
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8537850530:AAGyzyYAz4Bx25iPt2_gF9oqdwpCHxepRqw')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '-1'))
-bot = Bot(token=BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN)
 
 # Зберігаємо час останньої зміни
 light_status = None
@@ -20,11 +20,29 @@ def send_channel_message(message):
     try:
         bot.send_message(chat_id=CHANNEL_ID, text=message, parse_mode='Markdown')
         print(f"✅ Channel message sent: {message}")
-    except TelegramError as e:
-        print(f"❌ Telegram error: {e}")
     except Exception as e:
         print(f"❌ Error sending message: {e}")
 
+# ===== TELEGRAM COMMANDS =====
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "🚀 Light Monitor Bot\nВикористовуй /status для перевірки світла")
+
+@bot.message_handler(commands=['status'])
+def status_command(message):
+    global light_status, light_change_time
+    
+    status_str = '💡 Світло ВКЛ ✅' if light_status is True else ('🌑 Світло ВИМКЛ ❌' if light_status is False else '❓ Невідомо')
+    last_change_str = light_change_time.strftime('%H:%M:%S') if light_change_time else 'Ніколи'
+    
+    msg = f"📊 Light Status:\n{status_str}\n⏰ Остання зміна: {last_change_str}"
+    bot.reply_to(message, msg)
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    bot.reply_to(message, "Я бот для контролю світла. Використовуй /status або /start")
+
+# ===== FLASK WEBHOOKS =====
 @app.route('/webhook', methods=['POST'])
 def webhook():
     global light_status, light_change_time
@@ -41,14 +59,12 @@ def webhook():
             
             print(f"🔌 Device ID: {device_id}")
             
-            # Знаходимо статус світла
             for prop in properties:
                 code = prop.get('code')
                 value = prop.get('value')
                 
                 print(f"   Property {code}: {value}")
                 
-                # Перевіряємо різні можливі коди для світла
                 if code in ['switch', 'power', 'state', 'switch_1', 'switch_led']:
                     is_light_on = bool(value)
                     current_time = datetime.now()
@@ -56,9 +72,7 @@ def webhook():
                     
                     print(f"💡 Light status: {'ON' if is_light_on else 'OFF'}")
                     
-                    # Якщо статус змінився
                     if light_status != is_light_on:
-                        # Якщо були дані раніше - рахуємо час
                         if light_change_time is not None:
                             duration = current_time - light_change_time
                             hours = int(duration.total_seconds() // 3600)
@@ -75,11 +89,9 @@ def webhook():
                             print(f"Sending: {duration_msg}")
                             send_channel_message(duration_msg)
                         
-                        # Оновлюємо статус
                         light_status = is_light_on
                         light_change_time = current_time
                         
-                        # Відправляємо нове повідомлення
                         if light_status:
                             status_msg = f"✅ Світло з'явилося! 💡\n⏰ {current_time_str}"
                         else:
@@ -87,12 +99,9 @@ def webhook():
                         
                         print(f"Sending: {status_msg}")
                         send_channel_message(status_msg)
-                    else:
-                        print("⚠️  Status didn't change")
                     
                     return {'code': 0, 'msg': 'ok'}, 200
         
-        print("⚠️  No statusReport found in webhook")
         return {'code': 0, 'msg': 'ok'}, 200
     
     except Exception as e:
@@ -103,7 +112,6 @@ def webhook():
 
 @app.route('/health', methods=['GET'])
 def health():
-    """Health check endpoint"""
     status_str = 'ON ✅' if light_status is True else ('OFF ❌' if light_status is False else 'UNKNOWN ❓')
     return {
         'status': 'ok',
@@ -113,7 +121,6 @@ def health():
 
 @app.route('/', methods=['GET'])
 def index():
-    """Root endpoint"""
     return {
         'name': 'Light Monitor Bot',
         'status': 'running',
@@ -121,10 +128,18 @@ def index():
         'endpoints': ['/webhook', '/health']
     }, 200
 
+# ===== START =====
 if __name__ == '__main__':
     print("=" * 50)
     print("🚀 Light Monitor Bot Starting...")
-    print(f"Bot Token: {'✅ Set' if BOT_TOKEN else '❌ Not set'}")
+    print(f"Bot Token: ✅ Set")
     print(f"Channel ID: {CHANNEL_ID}")
     print("=" * 50)
+    
+    # Polling для Telegram команд
+    import threading
+    polling_thread = threading.Thread(target=lambda: bot.infinity_polling(), daemon=True)
+    polling_thread.start()
+    
+    # Flask для Tuya webhook
     app.run(host='0.0.0.0', port=8080, debug=False)
