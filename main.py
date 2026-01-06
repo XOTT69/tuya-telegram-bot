@@ -27,7 +27,10 @@ def get_tuya_token():
         'sign_method': 'HMAC-SHA256'
     }
     r = requests.get('https://openapi.tuya.com/v1.0/token?grant_type=1', headers=headers)
-    return r.json()['result']['access_token']
+    data = r.json()
+    if data.get('success'):
+        return data['result']['access_token']
+    raise Exception(f"Tuya token error: {data.get('msg', 'Unknown')}")
 
 def get_device_status(token):
     ts = str(int(time.time() * 1000))
@@ -39,7 +42,10 @@ def get_device_status(token):
         'sign': signature
     }
     r = requests.get(f'https://openapi.tuya.com/v1.0/devices/{DEVICE_ID}', headers=headers)
-    return r.json()['result']
+    data = r.json()
+    if data.get('success'):
+        return data['result']
+    raise Exception(f"Device error: {data.get('msg', 'Unknown')}")
 
 async def main():
     print("🚀 Tuya Telegram Bot запущено!")
@@ -47,20 +53,25 @@ async def main():
         try:
             token = get_tuya_token()
             device = get_device_status(token)
-            is_on = device['dps'].get('1', False)
-            power = device['dps'].get('17', 0)
-            voltage = device['dps'].get('20', 0)
+            dps = device.get('dps', {})
+            is_on = dps.get('1', False)
+            power = dps.get('17', 0)
+            voltage = dps.get('20', 0)
+            online = device.get('online', False)
             
-            msg = f"✅ СВІТЛО Є 💡\n{power}W | {voltage}V" if is_on else "🔴 СВІТЛО НЕМА ⚫"
-            online = "🟢 ОНЛАЙН" if device.get('online', False) else "🔴 ОФЛАЙН"
+            status = "✅ СВІТЛО Є" if is_on else "🔴 СВІТЛО НЕМА"
+            power_info = f"{power}W | {voltage}V" if is_on else ""
+            online_status = "🟢 ОНЛАЙН" if online else "🔴 ОФЛАЙН"
             
-            await bot.send_message(CHAT_ID, f"{msg}\n{online}")
-            print(f"[{time.strftime('%H:%M:%S')}] {msg}")
+            msg = f"{status}\n{power_info}\n{online_status}"
+            
+            await bot.send_message(CHAT_ID, msg)
+            print(f"[{time.strftime('%H:%M:%S')}] Відправлено: {msg}")
         except Exception as e:
             print(f"❌ Error: {e}")
-            await bot.send_message(CHAT_ID, f"⚠️ Помилка: {e}")
+            await bot.send_message(CHAT_ID, f"⚠️ Помилка: {str(e)}")
         
-        await asyncio.sleep(60)
+        await asyncio.sleep(60)  # кожну хвилину
 
 if __name__ == '__main__':
     asyncio.run(main())
