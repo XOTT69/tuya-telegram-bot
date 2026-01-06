@@ -136,10 +136,5 @@ if __name__ == '__main__':
     print(f"Channel ID: {CHANNEL_ID}")
     print("=" * 50)
     
-    # Polling для Telegram команд
-    import threading
-    polling_thread = threading.Thread(target=lambda: bot.infinity_polling(), daemon=True)
-    polling_thread.start()
-    
     # Flask для Tuya webhook
     app.run(host='0.0.0.0', port=8080, debug=False)
