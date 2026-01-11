@@ -6,8 +6,8 @@ const TOKEN = process.env.TG_TOKEN;
 const CHAT_ID = process.env.TG_CHAT_ID;
 
 let lastPing = Date.now();
-let powerState = true;          // зараз світло є
-let lastPowerOnTime = Date.now(); // коли востаннє з'явилось світло
+let powerState = true;            // зараз світло є
+let lastPowerOnTime = Date.now(); // коли востаннє світло з’явилось
 
 function sendTelegram(text) {
   return axios.post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -44,19 +44,22 @@ app.get("/ping", (req, res) => {
     );
 
     powerState = true;
-    lastPowerOnTime = now; // запам’ятали момент появи світла
+    lastPowerOnTime = now;
   }
 
   lastPing = now;
   res.send("OK");
 });
 
-// Перевірка, чи не зникли пінги (тобто світло)
+// Перевірка, чи реально пропало світло
 setInterval(() => {
   const now = Date.now();
 
-  // ESP пінгує раз у 30 сек, тому 40 сек — безпечний поріг
-  if (powerState && now - lastPing > 40000) {
+  /*
+    ESP пінгує раз у 30 сек.
+    90 сек = пропущено 3 пінги підряд → це вже не глюк Wi-Fi, а реальне вимкнення.
+  */
+  if (powerState && now - lastPing > 90000) {
     powerState = false;
 
     const worked = now - lastPowerOnTime;
