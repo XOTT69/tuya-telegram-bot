@@ -63,7 +63,7 @@ setInterval(() => {
     ESP пінгує раз у 30 сек.
     90 сек = пропущено 3 пінги підряд → це вже не глюк Wi-Fi, а реальне вимкнення.
   */
-  if (powerState && now - lastPing > 90000) {
+  if (powerState && now - lastPing > 120000) {
     powerState = false;
 
     const worked = now - lastPowerOnTime;
