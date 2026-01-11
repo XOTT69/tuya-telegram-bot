@@ -1,36 +1,41 @@
-import express from "express";
-import fetch from "node-fetch";
-
+const express = require("express");
+const axios = require("axios");
 const app = express();
 
-let lastPing = Date.now();
-let isOnline = true;
+const TOKEN = process.env.TG_TOKEN;
+const CHAT_ID = process.env.TG_CHAT_ID;
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const CHAT_ID = process.env.CHAT_ID;
+let lastPing = Date.now();
+let powerState = true;
 
 function sendTelegram(text) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(text)}`;
-  fetch(url).catch(() => {});
+  const url = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
+  return axios.post(url, {
+    chat_id: CHAT_ID,
+    text: text
+  });
 }
 
 app.get("/ping", (req, res) => {
-  lastPing = Date.now();
+  const now = Date.now();
 
-  if (!isOnline) {
-    sendTelegram("⚡ Світло зʼявилось");
-    isOnline = true;
+  if (!powerState) {
+    const outage = now - lastPing;
+    sendTelegram(`💡 Світло з'явилось\n⏱ Не було: ${Math.floor(outage / 60000)} хв`);
+    powerState = true;
   }
 
+  lastPing = now;
   res.send("OK");
 });
 
 setInterval(() => {
-  if (Date.now() - lastPing > 120000 && isOnline) {
-    sendTelegram("❌ Світло зникло");
-    isOnline = false;
+  const now = Date.now();
+  if (powerState && now - lastPing > 60000) {
+    powerState = false;
+    sendTelegram("❌ Світло пропало");
   }
-}, 30000);
+}, 10000);
 
 app.listen(process.env.PORT || 3000, () => {
   console.log("Server started");
