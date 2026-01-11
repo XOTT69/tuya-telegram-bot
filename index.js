@@ -6,8 +6,8 @@ const TOKEN = process.env.TG_TOKEN;
 const CHAT_ID = process.env.TG_CHAT_ID;
 
 let lastPing = Date.now();
-let powerState = true;            // зараз світло є
-let lastPowerOnTime = Date.now(); // коли востаннє світло з’явилось
+let powerState = true;              // зараз світло є
+let lastPowerOnTime = Date.now();   // коли востаннє з’явилось світло
 
 function sendTelegram(text) {
   return axios.post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -19,7 +19,12 @@ function sendTelegram(text) {
 function formatTime(ms) {
   const hours = Math.floor(ms / 3600000);
   const minutes = Math.floor((ms % 3600000) / 60000);
-  return `${hours} год ${minutes} хв`;
+
+  if (hours > 0) {
+    return `${hours} год ${minutes} хв`;
+  } else {
+    return `${minutes} хв`;
+  }
 }
 
 function getTimeStr() {
@@ -36,11 +41,10 @@ app.get("/ping", (req, res) => {
   // Якщо до цього було "світла нема", а тепер пінг прийшов → світло з’явилось
   if (!powerState) {
     const outage = now - lastPing;
-    const minutes = Math.floor(outage / 60000);
 
     sendTelegram(
       `💡 Світло з'явилось\n` +
-      `⏱ Не було: ${minutes} хв`
+      `⏱ Не було: ${formatTime(outage)}`
     );
 
     powerState = true;
