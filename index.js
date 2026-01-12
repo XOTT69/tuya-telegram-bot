@@ -5,9 +5,14 @@ const app = express();
 const TOKEN = process.env.TG_TOKEN;
 const CHAT_ID = process.env.TG_CHAT_ID;
 
+// Час останнього пінгу від ESP
 let lastPing = Date.now();
-let powerState = true;              // зараз світло є
-let lastPowerOnTime = Date.now();   // коли востаннє з’явилось світло
+
+// true = світло є, false = світла нема
+let powerState = true;
+
+// Реальний момент, коли світло востаннє з’явилось
+let lastRealPowerOnTime = Date.now();
 
 function sendTelegram(text) {
   return axios.post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -34,11 +39,11 @@ function getTimeStr() {
   });
 }
 
-// Пінг від ESP32
+// ---------- ПІНГ ВІД ESP32 ----------
 app.get("/ping", (req, res) => {
   const now = Date.now();
 
-  // Якщо до цього було "світла нема", а тепер пінг прийшов → світло з’явилось
+  // Якщо до цього світла не було, а тепер пінг прийшов → світло з’явилось
   if (!powerState) {
     const outage = now - lastPing;
 
@@ -48,25 +53,26 @@ app.get("/ping", (req, res) => {
     );
 
     powerState = true;
-    lastPowerOnTime = now;
+    lastRealPowerOnTime = now; // фіксуємо реальний момент включення
   }
 
   lastPing = now;
   res.send("OK");
 });
 
-// Перевірка, чи реально пропало світло
+// ---------- ПЕРЕВІРКА ЗНИКНЕННЯ СВІТЛА ----------
 setInterval(() => {
   const now = Date.now();
 
   /*
     ESP пінгує раз у 30 сек.
-    90 сек = пропущено 3 пінги підряд → це вже не глюк Wi-Fi, а реальне вимкнення.
+    120 сек = пропущено 4 пінги підряд.
+    Це вважаємо реальним зникненням світла.
   */
   if (powerState && now - lastPing > 120000) {
     powerState = false;
 
-    const worked = now - lastPowerOnTime;
+    const worked = now - lastRealPowerOnTime;
     const timeStr = getTimeStr();
 
     sendTelegram(
@@ -74,7 +80,7 @@ setInterval(() => {
       `🕓 Воно було ${formatTime(worked)}`
     );
   }
-}, 5000); // перевіряємо кожні 5 секунд
+}, 5000); // перевірка кожні 5 секунд
 
 app.listen(process.env.PORT || 3000, () => {
   console.log("Server started");
