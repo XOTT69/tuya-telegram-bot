@@ -38,10 +38,12 @@ function formatTime(ms) {
   }
 }
 
+// ВАЖЛИВО: фіксуємо часову зону Києва
 function getTimeStr() {
   return new Date().toLocaleTimeString("uk-UA", {
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: "Europe/Kyiv"
   });
 }
 
