@@ -5,10 +5,14 @@ const app = express();
 const TOKEN = process.env.TG_TOKEN;
 const CHAT_ID = process.env.TG_CHAT_ID;
 
+// === Налаштування ===
+const PING_TIMEOUT = 180000; // 3 хвилини (180 000 мс)
+const CHECK_INTERVAL = 5000; // перевірка кожні 5 секунд
+
 // Час запуску сервера
 let serverStartTime = Date.now();
 
-// Час останнього пінгу
+// Час останнього пінгу від ESP
 let lastPing = Date.now();
 
 // true = світло є, false = світла нема
@@ -19,6 +23,8 @@ let lastRealPowerOnTime = Date.now();
 
 // Чи сервер вже синхронізувався
 let initialized = false;
+
+// ====================
 
 function sendTelegram(text) {
   return axios.post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -38,7 +44,7 @@ function formatTime(ms) {
   }
 }
 
-// ВАЖЛИВО: фіксуємо часову зону Києва
+// Фіксуємо часову зону Києва
 function getTimeStr() {
   return new Date().toLocaleTimeString("uk-UA", {
     hour: "2-digit",
@@ -51,7 +57,7 @@ function getTimeStr() {
 app.get("/ping", (req, res) => {
   const now = Date.now();
 
-  // Якщо сервер ще не ініціалізований — синхронізуємось від ESP
+  // Якщо сервер ще не ініціалізований — синхронізація від ESP
   if (!initialized) {
     initialized = true;
     powerState = true;
@@ -83,10 +89,10 @@ setInterval(() => {
   const now = Date.now();
 
   /*
-    Якщо сервер запустився і за 2 хв не отримав жодного пінга,
+    Якщо сервер стартував і за 3 хв не отримав жодного пінга,
     значить світла вже немає. Просто фіксуємо стан, без повідомлень.
   */
-  if (!initialized && now - serverStartTime > 120000) {
+  if (!initialized && now - serverStartTime > PING_TIMEOUT) {
     initialized = true;
     powerState = false;
     lastPing = now;
@@ -97,9 +103,10 @@ setInterval(() => {
 
   /*
     ESP пінгує раз у 30 сек.
-    120 сек = пропущено 4 пінги підряд → реальне зникнення світла.
+    180 сек = пропущено ~6 пінгів підряд.
+    Це вже не глюк Wi-Fi, а або реально немає світла, або повний обрив зв’язку.
   */
-  if (powerState && now - lastPing > 120000) {
+  if (powerState && now - lastPing > PING_TIMEOUT) {
     powerState = false;
 
     const worked = now - lastRealPowerOnTime;
@@ -110,7 +117,7 @@ setInterval(() => {
       `🕓 Воно було ${formatTime(worked)}`
     );
   }
-}, 5000); // перевірка кожні 5 секунд
+}, CHECK_INTERVAL);
 
 app.listen(process.env.PORT || 3000, () => {
   console.log("Server started");
