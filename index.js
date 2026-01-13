@@ -5,14 +5,18 @@ const app = express();
 const TOKEN = process.env.TG_TOKEN;
 const CHAT_ID = process.env.TG_CHAT_ID;
 
-// === Налаштування ===
-const PING_TIMEOUT = 180000; // 3 хвилини (180 000 мс)
-const CHECK_INTERVAL = 5000; // перевірка кожні 5 секунд
+// === НАЛАШТУВАННЯ ===
+const PING_TIMEOUT = 180000;   // 3 хвилини
+const CHECK_INTERVAL = 5000;   // перевірка кожні 5 сек
+const PING_INTERVAL = 30000;   // ESP пінгує кожні 30 сек
+const REAL_OFF_SHIFT = PING_INTERVAL / 2; // 15 сек – поправка до реального часу
+
+// ====================
 
 // Час запуску сервера
 let serverStartTime = Date.now();
 
-// Час останнього пінгу від ESP
+// Час останнього пінгу
 let lastPing = Date.now();
 
 // true = світло є, false = світла нема
@@ -23,8 +27,6 @@ let lastRealPowerOnTime = Date.now();
 
 // Чи сервер вже синхронізувався
 let initialized = false;
-
-// ====================
 
 function sendTelegram(text) {
   return axios.post(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
@@ -44,9 +46,9 @@ function formatTime(ms) {
   }
 }
 
-// Фіксуємо часову зону Києва
-function getTimeStr() {
-  return new Date().toLocaleTimeString("uk-UA", {
+// Час у київській зоні
+function formatClock(timeMs) {
+  return new Date(timeMs).toLocaleTimeString("uk-UA", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Europe/Kyiv"
@@ -57,7 +59,7 @@ function getTimeStr() {
 app.get("/ping", (req, res) => {
   const now = Date.now();
 
-  // Якщо сервер ще не ініціалізований — синхронізація від ESP
+  // Перша синхронізація після старту сервера
   if (!initialized) {
     initialized = true;
     powerState = true;
@@ -102,15 +104,21 @@ setInterval(() => {
   if (!initialized) return;
 
   /*
-    ESP пінгує раз у 30 сек.
-    180 сек = пропущено ~6 пінгів підряд.
-    Це вже не глюк Wi-Fi, а або реально немає світла, або повний обрив зв’язку.
+    Реальне зникнення світла.
+    Ми підтверджуємо подію через 3 хв, але час події
+    ставимо максимально близьким до реального:
+    lastPing + 15 сек.
   */
   if (powerState && now - lastPing > PING_TIMEOUT) {
     powerState = false;
 
-    const worked = now - lastRealPowerOnTime;
-    const timeStr = getTimeStr();
+    // приблизний реальний момент вимкнення світла
+    const realOffTime = lastPing + REAL_OFF_SHIFT;
+
+    // скільки світло було перед цим
+    const worked = realOffTime - lastRealPowerOnTime;
+
+    const timeStr = formatClock(realOffTime);
 
     sendTelegram(
       `🔴 ${timeStr} Світло зникло\n` +
